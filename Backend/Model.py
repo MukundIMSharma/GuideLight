@@ -1,11 +1,14 @@
 import cohere 
-from rich import print
+from rich import print 
+import os
+from dotenv import load_dotenv
 
-# I can use another llm to use it as a judge - LLM_AS_A_JUDGE --- DIGVIJAYYY
 
-cohere_api_key = "sQR5XJdV5XGxkJzyI0XAgvX7S4s6NMPRtLcSebPh"
+load_dotenv()  # load variables from .env
+
+cohere_api_key = os.getenv("COHERE_API_KEY")
+
 co = cohere.Client(cohere_api_key)
-
 funcs = ["exit" , "general" , "realtime" , "open" , "close" , "play" , "generate image" , "system",
          "content" , "google search" , "youtube search" , "reminder"]
 message = [] # to store chat history
