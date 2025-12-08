@@ -2,16 +2,27 @@ from groq import Groq
 from json import dump, load
 from dotenv import dotenv_values
 from GeneralQueries import RealtimeInformation, AnswerModifier
+import os # <-- NEW IMPORT
+
+# --- ROBUST PATH CALCULATION ---
+# 1. Get the absolute directory of the current file (Backend/)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__)) 
+# 2. Get the parent directory (Project Root/)
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR) 
+# 3. Construct the full path to the log file (Project Root/Data/ChatLog.json)
+LOG_FILE_PATH = os.path.join(PROJECT_ROOT, "Data", "ChatLog.json")
+# -------------------------------
 
 env_vars = dotenv_values(".env")
 Username = env_vars.get("USERNAME")
 AssistantName = env_vars.get("ASSISTANT_NAME")
 GroqAPIKey = env_vars.get("GROQ_API_KEY")
-
+print(GroqAPIKey)
 client = Groq(api_key=GroqAPIKey)
 
 System = f"""Hello, I am {Username}, You are a very accurate and advanced AI chatbot named {AssistantName} which has real-time up-to-date information from the internet.
 *** Provide Answers In a Professional Way, make sure to add full stops, commas, question marks, and use proper grammar.***
+*** Provide concise, summarized answers in 3-5 lines only. Be brief and to the point while maintaining professionalism.***
 *** Just answer the question from the provided data in a professional way.***
 """
 
@@ -33,7 +44,8 @@ def ChatBot(query):
     global SystemChatBot
     
     try:
-        with open(r"Data/ChatLog.json", "r") as f:
+        # FIX 1: Use the robust LOG_FILE_PATH
+        with open(LOG_FILE_PATH, "r") as f:
             messages = load(f)
     except FileNotFoundError:
         messages = []
@@ -53,7 +65,7 @@ def ChatBot(query):
     completion = client.chat.completions.create(
         model="llama-3.3-70b-versatile", 
         messages=full_messages, # Use the truncated history list
-        max_tokens=1024,
+        max_tokens=300,  # Reduced to ensure concise 3-5 line responses
         temperature=0.7,
         top_p=1,
         stream=True,
@@ -72,10 +84,18 @@ def ChatBot(query):
     messages.append({"role": "user", "content": f"{query}"})
     messages.append({"role": "assistant", "content": Answer})
     
-    with open(r"Data/ChatLog.json", "w") as f:
+    # FIX 2: Use the robust LOG_FILE_PATH
+    with open(LOG_FILE_PATH, "w") as f:
         dump(messages, f, indent=4)
-        
-    return AnswerModifier(Answer)
+    
+    # Process and limit to 3-5 lines
+    modified_answer = AnswerModifier(Answer)
+    lines = modified_answer.split('\n')
+    non_empty_lines = [line.strip() for line in lines if line.strip()]
+    # Take first 5 lines, but prefer 3-5 lines
+    summarized_answer = '\n'.join(non_empty_lines[:5])
+    
+    return summarized_answer
 
 if __name__ == "__main__":
     while True:

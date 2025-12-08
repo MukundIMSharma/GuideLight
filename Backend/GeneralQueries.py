@@ -1,28 +1,40 @@
 from googlesearch import search
 from groq import Groq
+import os
 from json import dump, load
 import datetime
-from dotenv import dotenv_values
 
-env_vars = dotenv_values(".env")
 
-Username = env_vars.get("USERNAME")
-AssistantName = env_vars.get("ASSISTANT_NAME")
-GroqAPIKey = env_vars.get("GROQ_API_KEY")
+# env_vars = dotenv_values(".env")
 
-client = Groq(api_key=GroqAPIKey)  
+# Username = env_vars.get("USERNAME")
+# AssistantName = env_vars.get("ASSISTANT_NAME")
+# GroqAPIKey = env_vars.get("GROQ_API_KEY")
+# print(GroqAPIKey)
+# client = Groq(api_key=GroqAPIKey)  
 
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
+LOG_FILE_PATH = os.path.join(PROJECT_ROOT, "Data", "ChatLog.json")
+
+Username = os.getenv("USERNAME")
+AssistantName = os.getenv("ASSISTANT_NAME")
+client = None
 System = f"""Hello, I am {Username}, You are a very accurate and advanced AI chatbot named {AssistantName} which has real-time up-to-date information from the internet.
 *** Provide Answers In a Professional Way, make sure to add full stops, commas, question marks, and use proper grammar.***
 *** Just answer the question from the provided data in a professional way.***
 """
 
 try:
-    with open(r"Data/ChatLog.json" , "r") as f:
+    # Use the robust path variable here
+    with open(LOG_FILE_PATH, "r") as f:
         messages = load(f)
-except :
-    with open(r"Data/ChatLog.json" , "w") as f:
-        dump([] , f)
+except FileNotFoundError:
+    # If the file is not found, create it
+    with open(LOG_FILE_PATH, "w") as f:
+        dump([], f)
+    messages = []
 
 def GoogleSearch(query: str) -> str:
     """
@@ -130,6 +142,15 @@ def _build_messages(prompt: str, search_results: str) -> list[dict]:
 
 def RealtimeSearchEngine(prompt):
     global messages
+    global client
+    
+    if client is None:
+        GroqAPIKey = os.getenv("GROQ_API_KEY")
+        # You may want to add a check here to ensure the key is not None
+        if not GroqAPIKey:
+             raise ValueError("GROQ_API_KEY is not set in the environment.")
+        client = Groq(api_key=GroqAPIKey)
+        
     search_results = GoogleSearch(prompt)
     message_payload = _build_messages(prompt, search_results)
 

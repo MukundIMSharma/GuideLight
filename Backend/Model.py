@@ -1,3 +1,5 @@
+from Automation import automation
+import asyncio
 import cohere 
 from rich import print 
 import os
@@ -45,7 +47,19 @@ Chat_History = [
   {"role": "User", "message": "what is today's date and by the way remind me that i have a dancing performance on 5th aug at 11pm"},
   {"role": "Chatbot", "message": "general what is today's date, reminder 11:00pm 5th aug dancing performance"},
   {"role": "User", "message": "chat with me."},
-  {"role": "Chatbot", "message": "general chat with me."}
+  {"role": "Chatbot", "message": "general chat with me."},
+  {"role": "User", "message": "play music."},
+  {"role": "Chatbot", "message": "play music"},
+  {"role": "User", "message": "play aishyana."},
+  {"role": "Chatbot", "message": "play aishyana"},
+  {"role": "User", "message": "generate image of a hero."},
+  {"role": "Chatbot", "message": "generate image a hero"},
+  {"role": "User", "message": "play music."},
+  {"role": "Chatbot", "message": "play music"},
+  {"role": "User", "message": "volume up."},
+  {"role": "Chatbot", "message": "system volume up"},
+  {"role": "User", "message": "mute."},
+  {"role": "Chatbot", "message": "system mute"},
 ] # sample chats
 
 
@@ -88,5 +102,8 @@ def FirstLayerDMM(prompt: str = 'test'):
         return response
 
 if __name__ == "__main__":
-    while(True):
-        print(FirstLayerDMM(input("User: ")))
+    
+    user = input("User: ")
+    tasklists = FirstLayerDMM(user)
+    print(tasklists)
+    asyncio.run(automation(tasklists))

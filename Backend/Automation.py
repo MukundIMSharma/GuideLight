@@ -12,6 +12,10 @@ import requests
 import keyboard 
 import asyncio 
 import os  
+import asyncio 
+import os  
+from GeneralQueries import RealtimeSearchEngine
+from ChatBot import ChatBot
 
 env_vars = dotenv_values(".env")
 GroqAPIKey = env_vars.get("GROQ_API_KEY")
@@ -44,7 +48,7 @@ def content(topic):
     def contentWriteAI(prompt):
         messages.append({"role": "user", "content": prompt})
         completion = client.chat.completions.create(
-            model = 'mixtral-8x7b-32768',
+            model = 'llama-3.3-70b-versatile',
             messages = SystemChatBot+ messages,
             max_tokens = 2048,
             temperature = 0.7,
@@ -62,9 +66,13 @@ def content(topic):
         messages.append({"role": "assistant", "content": Answer})  
         return Answer
 
-    Topic: str = Topic.replace("Content ", "") 
-    ContentByAI = ContentWriterAI(Topic)  
+    Topic: str = topic.replace("Content ", "") 
+    ContentByAI = contentWriteAI(Topic)  
 
+    
+    import os
+    if not os.path.exists("Data"):
+        os.makedirs("Data")
     
     with open(rf"Data\{Topic.lower().replace(' ', '')}.txt", "w", encoding="utf-8") as file:
         file.write(ContentByAI)  
@@ -79,6 +87,44 @@ def YouTubeSearch(Topic):
 def PlayYoutube(query):
     playonyt(query)
     return True
+
+def WebOpen(url):
+    """Opens a URL using the default web browser."""
+    # Prepend 'http://' if the URL doesn't start with a protocol
+    if not (url.startswith('http://') or url.startswith('https://')):
+        url = 'http://' + url
+    webopen(url)
+    return True
+
+def classify_command_type(command: str) -> str:
+    """Uses Groq to classify the command as 'open app' or 'open url'."""
+    try:
+        prompt = (
+            f"The user wants to open something with the command: '{command}'. "
+            "Is the target an APPLICATION (like 'Discord', 'Steam', 'VS Code') or "
+            "a WEBSITE URL (like 'netflix.com', 'google.com', 'http://youtube.com')? "
+            "Reply with *only* one of the following two words: 'app' or 'url'."
+        )
+        
+        # Use a new, minimal message list for this simple query
+        completion = client.chat.completions.create(
+            model='llama-3.3-70b-versatile',
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=5, # Keep the response very short
+            temperature=0.0, # Get a deterministic classification
+        )
+        classification = completion.choices[0].message.content.strip().lower()
+        
+        if 'url' in classification:
+            return 'url'
+        else:
+            # Default to 'app' if the classification is unclear or if the model
+            # returns anything other than a clear 'url'.
+            return 'app'
+            
+    except Exception as e:
+        print(f"LLM classification failed: {e}. Defaulting to 'app' behavior.")
+        return 'app'
 
 def OpenApp(app_name, sess=requests.Session()):
     try:
@@ -104,9 +150,16 @@ def OpenApp(app_name, sess=requests.Session()):
         html = search_google(app_name)
         
         if html:
-            link = extract_links(html)[0]
-            webopen(link)
-        return True
+            links = extract_links(html)
+            if links:
+                link = links[0]
+                webopen(link)
+                return True
+            else:
+                print(f"No valid links found for {app_name}")
+            
+            return False
+            
 def closeApp(app_name):
         if "chrome" in app_name:
             pass
@@ -146,49 +199,111 @@ def System(command):
         return True
 
 async def TranslateAndExecute(commands: list[str]):
-    funcs = []
+    tasks = []  # List of output strings
+    funcs = []  # List of functions to execute
+    
     for command in commands:
         if command.startswith("open "):
-            if "open it" in command:
-                pass
-            if "open file" == command:
-                pass
-            else:
-                fun = asyncio.to_thread(OpenApp , command.removeprefix("open "))
+            # --- START of MODIFIED OPEN LOGIC ---
+            target = command.removeprefix("open ").strip()
+            
+            # 1. Classify the intent
+            command_type = await asyncio.to_thread(classify_command_type, target)
+            
+            if command_type == 'url':
+                print(f"Classified '{target}' as a URL. Opening in browser...")
+                fun = asyncio.to_thread(WebOpen , target)
                 funcs.append(fun)
+                tasks.append(f"opening {target}")
+            else:
+                print(f"Classified '{target}' as an Application. Attempting to open app...")
+                fun = asyncio.to_thread(OpenApp , target)
+                funcs.append(fun)
+                tasks.append(f"opening {target}")
+
         elif command.startswith("general "):
-            pass
+            fun = asyncio.to_thread(ChatBot , command.removeprefix("general "))
+            funcs.append(fun)
+            tasks.append("general")  # Marker for special handling
         elif command.startswith("realtime "):
-            pass
+            fun = asyncio.to_thread(RealtimeSearchEngine, command.removeprefix("realtime "))
+            funcs.append(fun)
+            tasks.append("realtime")  # Marker for special handling
         elif command.startswith("close "):
             fun = asyncio.to_thread(closeApp , command.removeprefix("close "))
             funcs.append(fun)
+            tasks.append(f"closing {command.removeprefix("close ")}")
         elif command.startswith("play "):
             fun = asyncio.to_thread(PlayYoutube , command.removeprefix("play "))
             funcs.append(fun)
+            tasks.append(f"playing {command.removeprefix("play ")}")
         elif command.startswith("content "):
             fun = asyncio.to_thread(content , command.removeprefix("content "))
             funcs.append(fun)
+            tasks.append(f"writing {command.removeprefix("content ")}")
         elif command.startswith("search "):
-            fun = asyncio.to_thread(GoogleSearch, command.removeprefix("google search "))
+            fun = asyncio.to_thread(GoogleSearch, command.removeprefix("search "))
             funcs.append(fun)
+            tasks.append(f"searching {command.removeprefix("search ")}")
         elif command.startswith("youtube search "):
             fun = asyncio.to_thread(YouTubeSearch , command.removeprefix("youtube search "))
             funcs.append(fun)
+            tasks.append(f"youtube search {command.removeprefix("youtube search ")}")
         elif command.startswith("system "):
             fun = asyncio.to_thread(System , command.removeprefix("system "))
             funcs.append(fun)
+            tasks.append(command.removeprefix("system "))
         else:
             print(f"No such function found.For {command}")
         
+    if not tasks:
+        return
+    
+    # Execute all tasks
     results = await asyncio.gather(*funcs)
-    for result in results:
-        if isinstance(result, str):
-            yield result
-        else:
-            yield results
+    
+    # Update tasks array with actual responses for general/realtime
+    for i, (result, task_output) in enumerate(zip(results, tasks)):
+        if task_output == "general" or task_output == "realtime":
+            # Extract first 3 lines from the output and replace in tasks array
+            if isinstance(result, str) and result.strip():
+                # Split by newlines and get first 3 non-empty lines
+                lines = result.split('\n')
+                non_empty_lines = [line.strip() for line in lines if line.strip()]
+                first_three_lines = ' '.join(non_empty_lines[:3])  # Join with space, remove \n
+                # Remove any remaining newline characters
+                first_three_lines = first_three_lines.replace('\n', ' ').replace('\r', ' ')
+                # Clean up multiple spaces
+                first_three_lines = ' '.join(first_three_lines.split())
+                if first_three_lines:
+                    tasks[i] = first_three_lines
+                else:
+                    tasks[i] = result[:200].replace('\n', ' ').replace('\r', ' ') if result else "No response"
+            else:
+                tasks[i] = str(result)[:200].replace('\n', ' ').replace('\r', ' ') if result else "No response"
+    
+    # Print tasks array for debugging (remove later) - after update
+    print("TASKS ARRAY:", tasks)
+    
+    # Process results and yield appropriate output
+    for task_output in tasks:
+        yield task_output
     
 async def automation(commands: list[str]):
     async for result in TranslateAndExecute(commands):
         pass
     return True
+
+# if __name__ == "__main__":
+    # print("Testing GoogleSearch...")
+    # result = GoogleSearch("Python programming")  # This should open a browser/search
+    # print(f"GoogleSearch result: {result}")  # Will print True
+    
+    # # Example: Test async automation (requires a commands list)
+    # import asyncio
+    # commands = [ "What new smartphones were launched this week?"]  # Sample commands
+    # print("Running automation...")
+    # asyncio.run(automation(commands))
+    # print("Automation complete.")   
+    # asyncio.run(automation(["search python frameworks" ,"open microsoft store", "realtime live price of ibm"]))
+    
